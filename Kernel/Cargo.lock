@@ -1,0 +1,14 @@
+[[package]]
+name = "kernel"
+version = "0.1.0"
+dependencies = [
+ "multiboot 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "multiboot"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[metadata]
+"checksum multiboot 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "745e351d4f128ea9e266fe2dd04a1bd7349c60441d45ec8677520bae08e25d43"

@@ -1,0 +1,14 @@
+[package]
+name = "kernel"
+version = "0.1.0"
+authors = ["Levente Kurusa <levex@linux.com>"]
+
+[profile.dev]
+panic = "abort"
+
+[dependencies]
+multiboot = "0.3.0"
+
+[lib]
+crate-type = ["staticlib"]
+path = "main.rs"
