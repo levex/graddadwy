@@ -4,7 +4,7 @@ mod logging;
 use core::mem;
 use core::fmt;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct Frame {
     pub frame_id: usize,
 }
@@ -16,8 +16,12 @@ impl fmt::Display for Frame {
 }
 
 impl Frame {
-    fn frame_addr(&self, page_size: usize) -> usize {
-        self.frame_id * page_size
+    pub fn frame_addr_with(&self, page_size: usize) -> usize {
+        self.frame_id
+    }
+
+    pub fn frame_addr(&self) -> usize {
+        self.frame_id * (::arch::PAGE_SIZE)
     }
 
     fn get_frame_by_id(id: usize) -> Frame {
@@ -41,7 +45,7 @@ impl FrameAllocator {
         self.next_free_frame =
             Frame::get_frame_by_id(ret.frame_id + 1);
         log!("Allocated frame id {} addr 0x{:x}", ret,
-             ret.frame_addr(self.page_size));
+             ret.frame_addr());
         ret
     }
 
@@ -53,9 +57,9 @@ impl FrameAllocator {
 pub fn init(mem_size: u32, page_size: u32) -> FrameAllocator
 {
     /* Determine the end of the kernel */
-    extern {
+    extern "C" {
         /* Defined in the linker script */
-        pub static kernel_end: usize;
+        pub static kernel_end: u32;
     }
     let _kernel_end: usize = unsafe { mem::transmute(&kernel_end) };
 
@@ -73,11 +77,11 @@ pub fn init(mem_size: u32, page_size: u32) -> FrameAllocator
                     + 2 * page_size as usize,
                     page_size as usize);
     log!("Kernel ends at 0x{:x}, so the next free frame is at 0x{:x}",
-         _kernel_end, next_free_frame.frame_addr(page_size as usize));
+         _kernel_end, next_free_frame.frame_addr());
 
     /* Start a basic frame allocation algorithm. */
     FrameAllocator {
-        next_free_frame: Frame::get_frame_for(next_free_frame.frame_addr(page_size as usize),
+        next_free_frame: Frame::get_frame_for(next_free_frame.frame_addr(),
                                               page_size as usize),
         page_size: page_size as usize,
     }

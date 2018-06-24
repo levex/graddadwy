@@ -144,32 +144,32 @@ start64.loop:
  RDI = Destination
  RSI = Value
  RDX = Count
-
-.section .text.memset
-.globl memset
-memset:
-	mov %rsi, %rax
-	mov %rdx, %rcx
-	rep stosb
-	ret
+*/
+//.section .text.memset
+//.globl memset
+//memset:
+	//mov %rsi, %rax
+	//mov %rdx, %rcx
+	//rep stosb
+	//ret
 /*
  RDI = Destination
  RSI = Source
  RDX = Count
-
-.section .text.memcpy
-.globl memcpy
-memcpy:
-	mov %rdx, %rcx
-	rep movsb
-	ret
-
 */
+//.section .text.memcpy
+//.globl memcpy
+//memcpy:
+	//mov %rdx, %rcx
+	//rep movsb
+	//ret
+
 
 /* === Page-aligned data === */
 .section .padata
 /* Initial paging structures, four levels */
 /* The +3 for sub-pages indicates "present (1) + writable (2)" */
+.globl init_pml4
 init_pml4:
 	.quad low_pdpt - KERNEL_BASE + 3	/* low map for startup, will be cleared before rust code runs */
 	.rept 512 - 3

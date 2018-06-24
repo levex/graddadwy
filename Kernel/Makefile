@@ -44,14 +44,25 @@ $(OBJDIR)start.o: arch/$(ARCH)/start.S Makefile
 	@mkdir -p $(dir $@)
 	$(AS) $(ASFLAGS) -o $@ $<
 
-$(BIN):
+$(BIN): $(OBJDIR)start.o
 	xargo build --target x86_64-graddadwy
-	$(LD) -o $@ -T $(LINKSCRIPT) $(LINKFLAGS) $(OBJDIR)start.o target/x86_64-graddadwy/debug/libkernel.a
+	$(LD) -o $@ $(LINKFLAGS) $(OBJDIR)start.o target/x86_64-graddadwy/debug/libkernel.a
 	mv $@ $@.elf64
-	$(OBJCOPY) $@.elf64 -F elf32-i386 $@
+	$(OBJCOPY) -K kernel_end $@.elf64 -F elf32-i386 $@
 
 run: $(BIN)
 	qemu-system-x86_64 -kernel ../kernel.amd64.bin -smp 2 -serial stdio -nographic -monitor null -m $(MEM)
+
+run_smp: $(BIN)
+	qemu-system-x86_64 -kernel ../kernel.amd64.bin -smp $(SMP) -serial stdio -nographic -monitor null -m $(MEM)
+
+run_up: $(BIN)
+	qemu-system-x86_64 -kernel ../kernel.amd64.bin -serial stdio -nographic -monitor null -m $(MEM)
+run: $(BIN)
+	qemu-system-x86_64 -kernel ../kernel.amd64.bin -smp 2 -serial stdio -nographic -monitor null -m $(MEM)
+
+drun: $(BIN)
+	qemu-system-x86_64 -d int -kernel ../kernel.amd64.bin -smp 2 -serial stdio -nographic -monitor null -m $(MEM)
 
 # Include dependency files
 -include $(OBJDIR)libcore.d $(OBJDIR)kernel.d $(OBJDIR)start.d
