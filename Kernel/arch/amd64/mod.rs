@@ -18,6 +18,9 @@ mod x86_io;
 #[path = "../x86_common/debug.rs"]
 pub mod debug;
 
+#[path = "./apic.rs"]
+mod apic;
+
 // Logging code
 #[path = "../../logging.rs"]
 mod logging;
@@ -32,9 +35,10 @@ extern crate multiboot;
 use self::multiboot::{Multiboot, PAddr};
 use core::slice;
 use core::mem;
+use core::ptr;
 
 extern crate x86_mp;
-use x86_mp::{MPEntryCode, MPFloatingPointer, MPConfigurationTableHeader};
+use x86_mp::{ProcessorEntry, MPEntryCode, MPFloatingPointer, MPConfigurationTableHeader};
 
 use mm::vmm::Pml4Entry;
 use mm::pmm::FrameAllocator;
@@ -64,6 +68,8 @@ unsafe fn discover_memory() -> usize
         panic!("Invalid Multiboot signature: 0x{:x}", mboot_sig);
     }
 
+    log!("Multiboot pointer: 0x{:016x}, Signature: 0x{:08x}", mboot_ptr, mboot_sig);
+
     /* First, try the Multiboot-provided memory map. */
     let mb = Multiboot::new(mboot_ptr as multiboot::PAddr, paddr_to_slice).unwrap();
 
@@ -76,6 +82,16 @@ unsafe fn discover_memory() -> usize
 
     /* Calculate the available memory that's in "high memory". */
     return (mb.upper_memory_bound().unwrap() * 1024) as usize;
+}
+
+fn copy_smp_into_to(target_addr: usize, start: usize, end: usize)
+{
+    /* verify that the code there is correct */
+    unsafe {
+        let verify_ptr: *const u32 = (target_addr + ::arch::KERNEL_BASE) as *const u32;
+        let data: u32 = *verify_ptr;
+        log!("Data at 0x{:016x} is 0x{:08x}", target_addr, data);
+    }
 }
 
 unsafe fn find_mp_tables() -> usize
@@ -115,6 +131,18 @@ unsafe fn find_mp_tables() -> usize
 
         search_now = ((search_now as usize) + 16) as *const u32;
     }
+
+    extern {
+        static SMP_AP_START: u32;
+        static SMP_AP_END: u32;
+    }
+    let smp_ap_start_addr: usize = unsafe { mem::transmute(&SMP_AP_START) };
+    let smp_ap_end_addr: usize = unsafe { mem::transmute(&SMP_AP_END) };
+    log!("SMP_AP_START: [0x{:016x} - 0x{:016x}]",
+         smp_ap_start_addr, smp_ap_end_addr);
+
+    /* FIXME: this is not needed */
+    copy_smp_into_to(0xA000, smp_ap_start_addr, smp_ap_end_addr);
 
     search_now = (KERNEL_BASE + 0xa000) as *const u32;
     loop {
@@ -161,10 +189,14 @@ pub fn early_init() -> (usize, usize)
     (available_memory, PAGE_SIZE)
 }
 
-fn enumerate_processors() -> usize
+fn enumerate_processors(fma: &mut FrameAllocator) -> usize
 {
     let mp_ptr_location = unsafe { find_mp_tables() as *const MPFloatingPointer };
     let mp_ptr: MPFloatingPointer;
+
+    // extern {
+        // static smp_ap_booted: u16;
+    // }
 
     if mp_ptr_location as usize != 0 {
         unsafe {
@@ -184,14 +216,41 @@ fn enumerate_processors() -> usize
             log!("MP header has {} entries, at 0x{:016x}, LAPIC at 0x{:016x}",
                  mp_hdr.entry_count, mp_hdr_loc, mp_hdr.local_apic_addr);
 
+            let lapic: apic::LAPIC = apic::LAPIC::new(fma, mp_hdr.local_apic_addr as usize, 0);
+
             let mp_hdr_iter = mp_hdr.iter(mp_hdr_loc);
             for i in mp_hdr_iter {
-                if i == MPEntryCode::Processor {
+                if i.code == MPEntryCode::Processor {
+                    let proc = i.get_processor_entry().unwrap();
                     processors += 1;
+                    if proc.lapic_id == 0 {
+                        continue;
+                    }
+                    lapic.send_init_to(proc.lapic_id);
+                    let mut wait = 400000;
+                    loop {
+                        wait = wait - 1;
+                        if wait == 0 {
+                            break;
+                        }
+                    }
+                    lapic.send_sipi_to(proc.lapic_id, 0xA);
+                    let mut wait = 400000;
+                    loop {
+                        wait = wait - 1;
+                        if wait == 0 {
+                            break;
+                        }
+                    }
                 }
             }
         };
         log!("Found {} processors in total", processors);
+        // unsafe {
+            // let smp_ap_booted_addr: usize = mem::transmute(&smp_ap_booted);
+            // let smp_ap_booted_ptr: *const u16 = (KERNEL_BASE + smp_ap_booted_addr) as *const u16;
+            // log!("{} processors booted", ptr::read_volatile(smp_ap_booted_ptr));
+        // }
         return processors;
     } else {
         log!("MP table was invalid, assuming 1 CPU");
@@ -201,5 +260,5 @@ fn enumerate_processors() -> usize
 
 pub fn late_init(fma: &mut FrameAllocator)
 {
-    enumerate_processors();
+    enumerate_processors(fma);
 }

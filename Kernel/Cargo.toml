@@ -15,3 +15,6 @@ x86_mp = { path = "/home/levex/dev/rust/rust-x86-mp/" }
 [lib]
 crate-type = ["staticlib"]
 path = "main.rs"
+
+[package.metadata.bootimage]
+output = "target.iso"

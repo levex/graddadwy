@@ -40,7 +40,7 @@ BIN := ../kernel.$(ARCH).bin
 
 all: $(BIN)
 
-$(OBJDIR)start.o: arch/$(ARCH)/start.S Makefile
+$(OBJDIR)start.o: arch/$(ARCH)/start.S Makefile $(LINKSCRIPT)
 	@mkdir -p $(dir $@)
 	$(AS) $(ASFLAGS) -o $@ $<
 
@@ -48,7 +48,7 @@ $(BIN): $(OBJDIR)start.o
 	xargo build --target x86_64-graddadwy
 	$(LD) -o $@ $(LINKFLAGS) $(OBJDIR)start.o target/x86_64-graddadwy/debug/libkernel.a
 	mv $@ $@.elf64
-	$(OBJCOPY) -K kernel_end $@.elf64 -F elf32-i386 $@
+	$(OBJCOPY) -K SMP_AP_START -K SMP_AP_END -K kernel_end $@.elf64 -F elf32-i386 $@
 
 run: $(BIN)
 	qemu-system-x86_64 -kernel ../kernel.amd64.bin -smp 2 -serial stdio -nographic -monitor null -m $(MEM)
@@ -63,6 +63,9 @@ run: $(BIN)
 
 drun: $(BIN)
 	qemu-system-x86_64 -d int -kernel ../kernel.amd64.bin -smp 2 -serial stdio -nographic -monitor null -m $(MEM)
+
+gdb_run: $(BIN)
+	qemu-system-x86_64 -d int -kernel ../kernel.amd64.bin -smp 2 -serial stdio -nographic -monitor null -m $(MEM) -s -S
 
 # Include dependency files
 -include $(OBJDIR)libcore.d $(OBJDIR)kernel.d $(OBJDIR)start.d

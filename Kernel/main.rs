@@ -86,3 +86,10 @@ pub fn kmain()
     log!("Looping...");
 	loop {}
 }
+
+#[no_mangle]
+pub fn kmain_ap()
+{
+    log!("An AP has come online!");
+    loop {}
+}

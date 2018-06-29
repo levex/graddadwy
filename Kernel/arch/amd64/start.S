@@ -113,13 +113,55 @@ start64:
 	mov $start64_high, %rax
 	jmp *%rax
 
-.section .text
+.code64
+.globl start64_ap
+start64_ap:
+    //mov $0x3f8, %dx ; mov $'H', %al ; outb %al, %dx
+    /* This an AP running in 64-bit mode, grab a unique stack */
+    lgdt GDTPtr
+    //mov $0x3f8, %dx ; mov $'E', %al ; outb %al, %dx
+    mov $start64_ap_high, %rax
+    jmp *%rax
+
+.code64
+.globl start64_ap_high
+start64_ap_high:
+    /* Full blown 64-bit mode now on the AP */
+    //mov $0x3f8, %dx ; mov $'R', %al ; outb %al, %dx
+    
+    /* Get a unique stack */
+1:
+    movl unique_stack_id, %eax
+    movl %eax, %ebx
+    incl %ebx
+    lock cmpxchgl %ebx, unique_stack_id
+    jnz 1b
+
+    /* Found a unique stack */
+    mov %ebx, %esp
+    inc %esp
+    shl $8, %esp
+    addq $ap_stack_base, %rsp
+
+    //mov $0x3f8, %dx ; mov $'E', %al ; outb %al, %dx
+
+    mov $0x10, %ax
+    mov %ax, %ss
+    mov %ax, %ds
+    mov %ax, %es
+    mov %ax, %fs
+    mov %ax, %gs
+
+    call kmain_ap
+    
+
+.section .inittext
 .extern kmain
 .globl start64_high
 start64_high:
 	/* and clear low-memory mapping */
 	mov $0, %rax
-	mov %rax, init_pml4 - KERNEL_BASE + 0
+	//mov %rax, init_pml4 - KERNEL_BASE + 0
 	
 	/* Set up segment registers */
 	mov $0x10, %ax
@@ -164,6 +206,93 @@ start64.loop:
 	//rep movsb
 	//ret
 
+/* APs start here */
+.section .smp.text, "ax"
+.globl smp_ap_boot
+.code16
+smp_ap_boot:
+    nop
+    nop
+    //movw $0x01, smp_ap_booted
+    jmp 1f
+
+_32GDTPtr_low:
+	.word _32GDTEND - _32GDT - 1
+	.long _32GDT - KERNEL_BASE
+_32GDT:
+        .long 0x0, 0x0
+        .long 0x0000FFFF, 0x00CF9A00    /* 0x08: 32-bit Kernel Code */
+        .long 0x0000FFFF, 0x00CF9200    /* 0x10: 32-bit Kernel Data */
+_32GDTEND:
+1:
+    cli
+    cld
+    mov $0, %ax
+    mov %ax, %ss
+    mov %ax, %ds
+    mov %ax, %es
+    mov %ax, %fs
+    mov %ax, %gs
+
+    in $0x92, %al
+    or $0x02, %al
+    out %al, $0x92
+
+    lgdt _32GDTPtr_low
+
+    //mov $0x3f8, %dx ; mov $'H', %al ; outb %al, %dx
+
+    /* Enter protected mode */
+    mov %cr0, %eax
+    or $1, %eax
+    mov %eax, %cr0
+
+    //mov $0x3f8, %dx ; mov $'E', %al ; outb %al, %dx
+
+
+    /* Load 32-bit CS */
+    ljmp $0x08, $__smp_ap_boot_32
+.code32
+__smp_ap_boot_32:
+    /* We are in full 32-bit protected mode now, let's setup PAE */
+    //mov $0x3f8, %dx ; mov $'L', %al ; outb %al, %dx
+
+    movw $0x10, %ax
+    movw %ax, %ss
+    movw %ax, %ds
+    movw %ax, %es
+    movw %ax, %fs
+    movw %ax, %gs
+
+    /* enable PAE */
+    movl %cr4, %eax
+    orl $(1 << 5), %eax
+    movl %eax, %cr4
+
+    //mov $0x3f8, %dx ; mov $'L', %al ; outb %al, %dx
+
+    /* load the temporary PML4 */
+	mov $(init_pml4 - KERNEL_BASE), %eax
+	mov %eax, %cr3
+    //mov $0x3f8, %dx ; mov $'O', %al ; outb %al, %dx
+
+    /* enable long mode */
+	mov $0xC0000080, %ecx
+	rdmsr
+	or $(1 << 11)|(1 << 8)|(1 << 0), %eax     /* NXE, LME, SCE */
+	wrmsr
+
+    //mov $0x3f8, %dx ; mov $'_', %al ; outb %al, %dx
+
+	/* Enable paging and enter long mode */
+	mov %cr0, %eax
+	or $0x80010000, %eax      /* PG & WP */
+	mov %eax, %cr0
+
+    //mov $0x3f8, %dx ; mov $'T', %al ; outb %al, %dx
+
+	lgdt GDTPtr_low - KERNEL_BASE
+	ljmp $0x08, $start64_ap
 
 /* === Page-aligned data === */
 .section .padata
@@ -205,8 +334,16 @@ init_stack:
 .section .data
 .globl mboot_sig
 .globl mboot_ptr
+.globl unique_stack_id
 mboot_sig:	.long 0
 mboot_ptr:	.long 0
+unique_stack_id: .long 0
+
+ap_stack_base:
+	.rept 256 * 4
+		.byte 0
+	.endr
+ap_stack:
 
 /* Global Descriptor Table */
 GDTPtr_low:
@@ -224,4 +361,6 @@ GDT:
         .long 0x00000000, 0x0040F200    /* 0x20: User Data        */
         .long 0x00000000, 0x0020FA00    /* 0x28: 64-bit User Code       */
         .long 0x00000000, 0x0000F200    /* 0x30: User Data (64 version) */
+        .long 0x0000FFFF, 0x00CF9A00    /* 0x38: 32-bit Kernel Code */
+        .long 0x0000FFFF, 0x00CF9200    /* 0x40: 32-bit Kernel Data */
 GDTEnd:
