@@ -15,6 +15,7 @@
 #![feature(const_fn)]	// Constant functions with CPFE
 #![feature(language_items)]	// Language items!
 #![feature(lang_items)]	// Language items!
+#![feature(integer_atomics)]	// Atomics for integers
 #![no_std]	//< Kernels can't use std
 #![crate_name="kernel"]
 
@@ -52,6 +53,9 @@ static HEAP_ALLOCATOR: SimpleBumpAllocator
 
 use alloc::boxed::Box;
 use alloc::Vec;
+use core::sync::atomic::{AtomicUsize, Ordering};
+
+static cpus_booted: AtomicUsize = AtomicUsize::new(1);
 
 // Kernel entrypoint (called by arch/<foo>/start.S)
 #[no_mangle]
@@ -83,13 +87,14 @@ pub fn kmain()
 
     arch::late_init(&mut fma);
 
-    log!("Looping...");
+    log!("Looping... ");
 	loop {}
 }
 
 #[no_mangle]
 pub fn kmain_ap()
 {
-    log!("An AP has come online!");
+    let cpu_id = cpus_booted.fetch_add(1, Ordering::SeqCst);
+    log!("An AP with id {} has come online!", cpu_id);
     loop {}
 }
