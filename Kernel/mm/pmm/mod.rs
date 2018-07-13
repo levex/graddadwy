@@ -80,9 +80,10 @@ pub fn init(mem_size: u32, page_size: u32) -> FrameAllocator
          _kernel_end, next_free_frame.frame_addr());
 
     /* Start a basic frame allocation algorithm. */
-    FrameAllocator {
+    let ret = FrameAllocator {
         next_free_frame: Frame::get_frame_for(next_free_frame.frame_addr(),
                                               page_size as usize),
         page_size: page_size as usize,
-    }
+    };
+    ret
 }

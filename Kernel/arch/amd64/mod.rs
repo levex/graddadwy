@@ -36,6 +36,7 @@ use self::multiboot::{Multiboot, PAddr};
 use core::slice;
 use core::mem;
 use core::ptr;
+use alloc::Vec;
 
 extern crate x86_mp;
 use x86_mp::{ProcessorEntry, MPEntryCode, MPFloatingPointer, MPConfigurationTableHeader};
@@ -49,6 +50,15 @@ pub fn paddr_to_slice<'a>(p: multiboot::PAddr, sz: usize) -> Option<&'a [u8]> {
         Some(slice::from_raw_parts(ptr, sz))
     }
 }
+
+#[derive(Clone, Copy, Debug)]
+pub struct Processor {
+    pub id: usize,
+    pub apic_id: usize,
+    pub stack_frame: usize,
+}
+
+pub static mut processor_list: Vec<Processor> = Vec::new();
 
 /*
  * This method is responsible for discovering the available memory
@@ -163,7 +173,7 @@ unsafe fn find_mp_tables() -> usize
 
 pub unsafe fn set_page_directory(pml4: usize)
 {
-    log!("page directory is {}", pml4);
+    //log!("page directory is {}", pml4);
     asm!("mov $0, %cr3" :: "r" (pml4) : "memory")
 }
 
@@ -219,10 +229,51 @@ fn enumerate_processors(fma: &mut FrameAllocator) -> usize
             let lapic: apic::LAPIC = apic::LAPIC::new(fma, mp_hdr.local_apic_addr as usize, 0);
 
             let mp_hdr_iter = mp_hdr.iter(mp_hdr_loc);
+
+            /* Count the number of processors */
+            processors = mp_hdr_iter.clone().map(|x|
+                                if x.code == MPEntryCode::Processor {
+                                    1
+                                } else {
+                                    0
+                                }).sum();
+
+            /* Allocate the stack frames for the APs */
+            for i in 0..processors {
+                processor_list.push(Processor {
+                    stack_frame: fma.allocate_frame().frame_addr(),
+                    id: i,
+                    apic_id: 0xffffffffffffffff,
+                });
+            }
+
+            let mut p_c = 0;
+            let mut b_c = 0;
+            let mut __did_an_ap_boot: u32;
+            let mut res: u32 = 0;
+
+            /* Wake up the APs */
             for i in mp_hdr_iter {
                 if i.code == MPEntryCode::Processor {
+                    p_c = p_c + 1;
+                }
+                asm!("mfence; movl unique_stack_id, $0; movl did_an_ap_boot, $1":"=r"(res),"=r"(__did_an_ap_boot));
+                log!("p_c = {} b_c = {} res = {} daab = {}", p_c, b_c, res, __did_an_ap_boot);
+                //if p_c != 0 && p_c % 4 == 0 && i.code == MPEntryCode::Processor {
+                if i.code == MPEntryCode::Processor && __did_an_ap_boot != b_c {
+                    log!("Reached maximum parallel boot, waiting...");
+                    loop {
+                        asm!("mfence; movl unique_stack_id, $0; movl did_an_ap_boot, $1":"=r"(res),"=r"(__did_an_ap_boot));
+                        //log!("Parallel boot hang: usi: {} daab: {}", res, __did_an_ap_boot);
+                        if __did_an_ap_boot == b_c /* && res == 0 */ {
+                            //asm!("movl $$0x0, did_an_ap_boot");
+                            log!("Parallel boot hang done.");
+                            break;
+                        }
+                    }
+                }
+                if i.code == MPEntryCode::Processor {
                     let proc = i.get_processor_entry().unwrap();
-                    processors += 1;
                     if proc.lapic_id == 0 {
                         continue;
                     }
@@ -242,6 +293,7 @@ fn enumerate_processors(fma: &mut FrameAllocator) -> usize
                             break;
                         }
                     }
+                    b_c += 1;
                 }
             }
         };
@@ -256,6 +308,62 @@ fn enumerate_processors(fma: &mut FrameAllocator) -> usize
         log!("MP table was invalid, assuming 1 CPU");
         return 1;
     }
+}
+
+pub unsafe fn new_cpu_init(cpu_id: usize)
+{
+    let _cpu_id: u32 = cpu_id as u32;
+
+    /* save the current CPU id in the %fs register of the AP */
+    asm!("xor %edx, %edx; movl $$0xC0000103, %ecx; wrmsr"
+         ::"{rax}"(_cpu_id):"rdx","rcx");
+
+    /* synchronize page tables */
+    ::arch::set_page_directory(::mm::vmm::KERNEL_PAGE_DIRECTORY);
+
+    /* get the processor structure for this AP */
+    let this_ap = processor_list.iter().filter(|x| x.id == cpu_id).next().unwrap();
+
+    /* allocate a new stack */
+    let frame = this_ap.stack_frame + ::arch::PAGE_SIZE + ::arch::KERNEL_BASE;
+
+    log!("AP {} about to switch stack to 0x{:016x}", cpu_id, frame);
+
+    /* switch stacks */
+    asm!("movq %rax, %rsp;
+         movq %rax, %rbp;
+         call new_cpu_init_tail"::"%rax"(frame));
+}
+
+#[no_mangle]
+pub unsafe fn new_cpu_init_tail()
+{
+    let cpu_id: u32;
+
+    //asm!("movl %fs, $0":"=r"(cpu_id));
+    asm!("rdtscp":"={ecx}"(cpu_id)::"eax", "edx");
+
+    /* get back the AP id */
+    log!("Switched stack for AP {}", cpu_id);
+
+    /* get the procesor structure */
+    let this_ap = processor_list.iter().filter(|x|
+                    x.id == cpu_id as usize
+                    ).next().unwrap();
+
+    /* TODO: allocate percpu storage */
+    ::arch::allocate_percpu_storage<Processor>(cpu_id);
+
+    /* TODO: set percpu storage in %gs */
+
+    /* signal to the BSP that we are now done */
+    asm!("lock decl unique_stack_id; lock incl did_an_ap_boot");
+
+    loop {}
+}
+
+pub fn allocate_percpu_storage<T>(cpu_id: u32) -> PerCpu<T>
+{
 }
 
 pub fn late_init(fma: &mut FrameAllocator)

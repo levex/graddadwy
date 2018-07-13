@@ -10,6 +10,8 @@ use ::arch::PAGE_SHIFT;
 pub type PhysAddr = usize;
 pub type VirtAddr = usize;
 
+pub static mut KERNEL_PAGE_DIRECTORY: usize = 0;
+
 /* Generic trait that describes all the tables that are used in Paging */
 trait PagingTable {
     fn set_address(&mut self, addr: usize);
@@ -270,6 +272,7 @@ pub fn remap_kernel<'a>(allocator: &mut FrameAllocator)
 
     unsafe {
         ::arch::set_page_directory(pml4.frame_addr());
+        KERNEL_PAGE_DIRECTORY = pml4.frame_addr();
     }
 
     log!("Remap successful!");

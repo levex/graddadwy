@@ -10,7 +10,8 @@ panic = "abort"
 multiboot = "0.3.0"
 bitflags = "1.0.3"
 rlibc = "1.0.0"
-x86_mp = { path = "/home/levex/dev/rust/rust-x86-mp/" }
+x86_64 = "0.2.7"
+x86_mp = { path = "/home/lkurusa/dev/rust-x86-mp/" }
 
 [lib]
 crate-type = ["staticlib"]

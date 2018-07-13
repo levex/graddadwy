@@ -8,24 +8,30 @@
  * This code has been put into the public domain, there are no restrictions on
  * its use, and the author takes no liability.
  */
-use core::sync::atomic;
+use core::sync::atomic::{AtomicUsize, Ordering};
 use core::fmt;
 
 /// A formatter object
-pub struct Writer(bool);
+pub struct Writer(usize);
 
 /// A primitive lock for the logging output
 ///
 /// This is not really a lock. Since there is no threading at the moment, all
 /// it does is prevent writing when a collision would occur.
-static LOGGING_LOCK: atomic::AtomicBool = atomic::ATOMIC_BOOL_INIT;
+static LOGGING_LOCK: AtomicUsize = AtomicUsize::new(0);
 
 impl Writer
 {
 	/// Obtain a logger for the specified module
 	pub fn get(module: &str) -> Writer {
 		// This "acquires" the lock (actually just disables output if paralel writes are attempted
-		let mut ret = Writer( ! LOGGING_LOCK.swap(true, atomic::Ordering::Acquire) );
+                loop {
+                    if (LOGGING_LOCK.compare_and_swap(0, 1, Ordering::SeqCst) == 0) {
+                        break;
+                    }
+                }
+
+		let mut ret = Writer(1);
 		
 		// Print the module name before returning (prefixes all messages)
 		{
@@ -47,9 +53,7 @@ impl ::core::ops::Drop for Writer
 			let _ = write!(self, "\n");
 		}
 		// On drop, "release" the lock
-		if self.0 {
-			LOGGING_LOCK.store(false, atomic::Ordering::Release);
-		}
+                LOGGING_LOCK.store(0, Ordering::SeqCst);
 	}
 }
 
@@ -58,12 +62,9 @@ impl fmt::Write for Writer
 	fn write_str(&mut self, s: &str) -> fmt::Result
 	{
 		// If the lock is owned by this instance, then we can safely write to the output
-		if self.0
-		{
-			unsafe {
-				::arch::debug::puts( s );
-			}
-		}
+                unsafe {
+                        ::arch::debug::puts( s );
+                }
 		Ok( () )
 	}
 }

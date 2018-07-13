@@ -16,6 +16,7 @@
 #![feature(language_items)]	// Language items!
 #![feature(lang_items)]	// Language items!
 #![feature(integer_atomics)]	// Atomics for integers
+#![feature(const_vec_new)] // CTFE for Vec::new()
 #![no_std]	//< Kernels can't use std
 #![crate_name="kernel"]
 
@@ -88,13 +89,15 @@ pub fn kmain()
     arch::late_init(&mut fma);
 
     log!("Looping... ");
-	loop {}
+    loop {}
 }
 
+/* Entry point of APs */
 #[no_mangle]
-pub fn kmain_ap()
+pub unsafe fn kmain_ap()
 {
     let cpu_id = cpus_booted.fetch_add(1, Ordering::SeqCst);
-    log!("An AP with id {} has come online!", cpu_id);
+    log!("An AP with id {} has come online, looping.", cpu_id);
+    ::arch::new_cpu_init(cpu_id);
     loop {}
 }

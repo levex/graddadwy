@@ -12,6 +12,7 @@
 
 /* The kernel is linked to run at -2GB. This allows efficient addressing */
 KERNEL_BASE = 0xFFFFFFFF80000000
+PAGE_SHIFT = 12
 
 /* === Multiboot Header === */
 MULTIBOOT_PAGE_ALIGN  =  (1<<0)
@@ -114,6 +115,13 @@ start64:
 	jmp *%rax
 
 .code64
+.globl __ap_switch_stack
+__ap_switch_stack:
+	movq %rax, %rsp
+	movq %rax, %rbp
+	call new_cpu_init_tail
+
+.code64
 .globl start64_ap
 start64_ap:
     //mov $0x3f8, %dx ; mov $'H', %al ; outb %al, %dx
@@ -137,10 +145,12 @@ start64_ap_high:
     lock cmpxchgl %ebx, unique_stack_id
     jnz 1b
 
+    //lock incl did_an_ap_boot
+
     /* Found a unique stack */
     mov %ebx, %esp
     inc %esp
-    shl $8, %esp
+    shl $PAGE_SHIFT, %esp
     addq $ap_stack_base, %rsp
 
     //mov $0x3f8, %dx ; mov $'E', %al ; outb %al, %dx
@@ -213,7 +223,8 @@ start64.loop:
 smp_ap_boot:
     nop
     nop
-    //movw $0x01, smp_ap_booted
+    //movl $did_an_ap_boot - KERNEL_BASE, %eax
+    //movl $0x01, (%eax)
     jmp 1f
 
 _32GDTPtr_low:
@@ -335,12 +346,14 @@ init_stack:
 .globl mboot_sig
 .globl mboot_ptr
 .globl unique_stack_id
+.globl did_an_ap_boot
 mboot_sig:	.long 0
 mboot_ptr:	.long 0
 unique_stack_id: .long 0
+did_an_ap_boot: .long 0
 
 ap_stack_base:
-	.rept 256 * 4
+	.rept 4096 * 4
 		.byte 0
 	.endr
 ap_stack:

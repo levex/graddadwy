@@ -51,21 +51,21 @@ $(BIN): $(OBJDIR)start.o
 	$(OBJCOPY) -K SMP_AP_START -K SMP_AP_END -K kernel_end $@.elf64 -F elf32-i386 $@
 
 run: $(BIN)
-	qemu-system-x86_64 -kernel ../kernel.amd64.bin -smp 2 -serial stdio -nographic -monitor null -m $(MEM)
+	qemu-system-x86_64 -cpu max -kernel ../kernel.amd64.bin -smp 2 -serial stdio -nographic -monitor null -m $(MEM)
 
 run_smp: $(BIN)
-	qemu-system-x86_64 -kernel ../kernel.amd64.bin -smp $(SMP) -serial stdio -nographic -monitor null -m $(MEM)
+	qemu-system-x86_64 -cpu max -kernel ../kernel.amd64.bin -smp $(SMP) -serial stdio -nographic -monitor null -m $(MEM)
 
 run_up: $(BIN)
-	qemu-system-x86_64 -kernel ../kernel.amd64.bin -serial stdio -nographic -monitor null -m $(MEM)
+	qemu-system-x86_64 -cpu max -kernel ../kernel.amd64.bin -serial stdio -nographic -monitor null -m $(MEM)
 run: $(BIN)
-	qemu-system-x86_64 -kernel ../kernel.amd64.bin -smp 2 -serial stdio -nographic -monitor null -m $(MEM)
+	qemu-system-x86_64 -cpu max -kernel ../kernel.amd64.bin -smp 2 -serial stdio -nographic -monitor null -m $(MEM)
 
 drun: $(BIN)
-	qemu-system-x86_64 -d int -kernel ../kernel.amd64.bin -smp 2 -serial stdio -nographic -monitor null -m $(MEM)
+	qemu-system-x86_64 -d int -cpu max -kernel ../kernel.amd64.bin -smp 2 -serial stdio -nographic -monitor null -m $(MEM)
 
 gdb_run: $(BIN)
-	qemu-system-x86_64 -d int -kernel ../kernel.amd64.bin -smp 2 -serial stdio -nographic -monitor null -m $(MEM) -s -S
+	qemu-system-x86_64 -d int -cpu max -kernel ../kernel.amd64.bin -smp 16 -serial stdio -nographic -monitor null -m $(MEM) -s -S
 
 # Include dependency files
 -include $(OBJDIR)libcore.d $(OBJDIR)kernel.d $(OBJDIR)start.d
