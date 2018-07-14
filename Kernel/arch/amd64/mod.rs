@@ -352,7 +352,7 @@ pub unsafe fn new_cpu_init_tail()
                     ).next().unwrap();
 
     /* TODO: allocate percpu storage */
-    ::arch::allocate_percpu_storage<Processor>(cpu_id);
+    //::arch::allocate_percpu_storage<Processor>(cpu_id);
 
     /* TODO: set percpu storage in %gs */
 
@@ -362,9 +362,9 @@ pub unsafe fn new_cpu_init_tail()
     loop {}
 }
 
-pub fn allocate_percpu_storage<T>(cpu_id: u32) -> PerCpu<T>
-{
-}
+//pub fn allocate_percpu_storage<T>(cpu_id: u32) -> PerCpu<T>
+//{
+//}
 
 pub fn late_init(fma: &mut FrameAllocator)
 {
